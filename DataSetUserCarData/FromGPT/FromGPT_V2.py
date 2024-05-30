@@ -3,9 +3,6 @@ import numpy as np
 import seaborn as sns
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
-import scipy.stats as stats
-from statsmodels.formula.api import ols
-from sklearn.decomposition import PCA
 
 # Charger le fichier CSV
 file_path = 'C:\\Users\\rfhba\\Documents\\ETUDE\\ENSIBS\\S6\\Math\\Cars_Used_DataSET_TPMATH\\DataSetUserCarData\\UserCarData.csv'
@@ -16,48 +13,24 @@ Data.columns = [col.strip() for col in Data.columns]  # Supprimer les espaces au
 print(Data.head())
 
 # Sélectionner des colonnes pour l'analyse
-columns = ["year", "selling_price", "km_driven", "mileage", "engine", "max_power", "seats"]
+columns = ["year", "selling_price", "km_driven", "mileage", "engine", "max_power", "seats", "name"]
 Data = Data[columns]
 
-# Analyse descriptive
-print(Data.describe())
+# Convertir les variables catégorielles (nom/marque) en variables indicatrices
+Data = pd.get_dummies(Data, columns=["name"], drop_first=True)
 
-# Histogrammes
-Data.hist(bins=30, figsize=(15, 10))
-plt.show()
+# Afficher les premières lignes après transformation
+print(Data.head())
 
-# Boîtes à moustaches
-Data.boxplot(figsize=(15, 10))
-plt.show()
-
-# Relation entre le prix de vente et les kilomètres parcourus
-plt.figure(figsize=(10, 6))
-sns.scatterplot(x='km_driven', y='selling_price', data=Data)
-plt.xlabel('Kilomètres parcourus')
-plt.ylabel('Prix de vente')
-plt.title('Relation entre le prix de vente et les kilomètres parcourus')
-plt.show()
-
-# Matrice de corrélation
+# Matrice de corrélation pour les variables numériques
 correlation_matrix = Data.corr()
-print(correlation_matrix)
 plt.figure(figsize=(10, 8))
 sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt=".2f")
 plt.title('Matrice de Corrélation')
 plt.show()
 
-# Régression linéaire simple : selling_price ~ km_driven
-X = sm.add_constant(Data['km_driven'])
-model = sm.OLS(Data['selling_price'], X).fit()
-print(model.summary())
-
-# Régression linéaire simple : selling_price ~ year
-X = sm.add_constant(Data['year'])
-model = sm.OLS(Data['selling_price'], X).fit()
-print(model.summary())
-
 # Régression linéaire multiple
-X = Data[['km_driven', 'year', 'mileage', 'max_power', 'engine', 'seats']]
+X = Data.drop(columns=['selling_price'])
 Y = Data['selling_price']
 X = sm.add_constant(X)  # Ajouter une constante pour le terme d'interception
 
@@ -66,13 +39,10 @@ predictions = model.predict(X)
 
 print(model.summary())
 
-# PCA (Analyse en Composantes Principales)
-pca = PCA(n_components=2)
-components = pca.fit_transform(Data[['km_driven', 'year', 'mileage', 'max_power', 'engine']].dropna())
+# Visualisation des résidus pour vérifier l'ajustement du modèle
 plt.figure(figsize=(10, 6))
-plt.scatter(components[:, 0], components[:, 1], c=Data['selling_price'], cmap='viridis')
-plt.colorbar(label='Prix de vente')
-plt.xlabel('Composante Principale 1')
-plt.ylabel('Composante Principale 2')
-plt.title('PCA des caractéristiques de la voiture')
+sns.residplot(x=predictions, y=model.resid, lowess=True, line_kws={'color': 'red', 'lw': 2})
+plt.xlabel('Valeurs Prédictes')
+plt.ylabel('Résidus')
+plt.title('Diagramme des Résidus')
 plt.show()
