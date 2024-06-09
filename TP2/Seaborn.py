@@ -4,6 +4,7 @@ import seaborn as sns
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 import scipy.stats as stats
+import statmodels.api as sm
 
 Data = pd.read_csv("Abena_Data.csv", sep='\;')
 colums=["urbaine", "age", "couple", "enfants", "scolaire", "situation", "repas", "duree", "assurance", "imc"]
@@ -72,7 +73,7 @@ print(f"Shapiro-Wilk Test Statistic: {test_statistic}, P-Value: {p_value}")
 
 
 
-######## TEST sur une et eux population
+######## TEST sur une et deux population
 
 #One sample t-test
 #testing if the mean of the group1 is signifanctly different form the population mean of 25
