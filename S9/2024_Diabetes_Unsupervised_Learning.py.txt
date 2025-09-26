@@ -1,0 +1,452 @@
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from yellowbrick.cluster import SilhouetteVisualizer, KElbowVisualizer, InterclusterDistance
+from sklearn.decomposition import PCA as SklearnPCA
+from yellowbrick.features import PCA as YellowbrickPCA
+from functions import *
+from scipy.stats import pearsonr
+
+# Importation des données
+Data = pd.read_csv("diabetes.csv", sep=',')
+
+# Sélection des colonnes explicatives et de la cible
+target_name = "Outcome"
+explanatory_columns = ["Pregnancies", "Glucose", "BloodPressure", "SkinThickness",
+                       "Insulin", "BMI", "DiabetesPedigreeFunction", "Age"]
+
+target = Data[target_name]
+df = Data[explanatory_columns]
+
+# Standardisation des données
+scaler = StandardScaler()
+dfs = scaler.fit_transform(df)
+
+
+#############################################################
+# Flat Clustering with Kmeans
+#############################################################
+
+# Instancier un modèle Kmeans (par défaut nombre de clusters k=8)
+model = KMeans(random_state=42)
+
+
+# Fine-tuning du modèle pour déterminer l'hyperparamètre k
+
+
+# Visualiseur Elbow (Coude)
+elbow_viz = KElbowVisualizer(model, k=(1, 12))
+elbow_viz.fit(dfs)
+elbow_viz.show()
+
+# Carte des distances entre les clusters
+intercluster_viz = InterclusterDistance(model)
+intercluster_viz.fit(dfs)
+intercluster_viz.show()
+
+# Calcul manuel du score silhouette pour plusieurs clusters
+silhouette_scores = []
+range_clusters = range(2, 11)
+for n_clusters in range_clusters:
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    labels = kmeans.fit_predict(dfs)
+    score = silhouette_score(dfs, labels)
+    silhouette_scores.append(score)
+
+# Utilisation de seaborn pour visualiser les scores silhouette
+sns.set(style="whitegrid")
+plt.figure(figsize=(8, 5))
+sns.lineplot(x=list(range_clusters), y=silhouette_scores, marker='o', color='b')
+plt.title("Score Silhouette en fonction du nombre de clusters")
+plt.xlabel("Nombre de clusters")
+plt.ylabel("Score Silhouette")
+plt.grid(True)
+plt.show()
+
+# Ajustement du meilleur modèle KMeans avec l'hyperparamètre optimal Kopt=4
+Kopt = 4
+model = KMeans(n_clusters=Kopt, random_state=42)
+model_labels = model.fit_predict(dfs)
+
+# Affichage des scores de performance du meilleur modèle Kmeans
+print("Score Silhouette:", silhouette_score(dfs, model_labels))
+print("Inertie intra-classes:", model.inertia_)
+
+
+# Visualisation des clusters dans le plan
+# Définition des noms de clusters
+classes = ['cluster 1', 'cluster 2', 'cluster 3', 'cluster 4']
+
+# Calculer le pourcentage de restitution de l'information avec sklearn PCA
+pca = SklearnPCA(n_components=2)  # Projection dans un espace à 2 dimensions
+pca.fit(dfs)
+
+# Calcul du pourcentage de variance expliquée par chaque composante principale
+explained_variance = pca.explained_variance_ratio_ * 100
+print(f"Composante principale 1 : {explained_variance[0]:.2f}% de variance expliquée")
+print(f"Composante principale 2 : {explained_variance[1]:.2f}% de variance expliquée")
+
+# Visualisation des clusters avec projection des features 
+pca_viz = YellowbrickPCA(scale=True, proj_features=True, classes=classes)
+pca_viz.fit_transform(dfs,model_labels)
+pca_viz.show()
+
+# Visualisation des clusters sans projection des features 
+pca_viz = YellowbrickPCA(scale=True, proj_features=False, classes=['class1', 'class2',
+                                                        'class3','class4'])
+pca_viz.fit_transform(dfs,model_labels)
+pca_viz.show()
+
+
+# Caractérisation des clusters
+# Filtrer les données en fonction des étiquettes de clusters
+cluster1 = df[model_labels == 0]
+cluster2 = df[model_labels == 1]
+cluster3 = df[model_labels == 2]
+cluster4 = df[model_labels == 3]
+
+# Affichage des statistiques descriptives pour chaque cluster
+print('Cluster 1\n', cluster1.describe())
+print('Cluster 2\n', cluster2.describe())
+print('Cluster 3\n', cluster3.describe())
+print('Cluster 4\n', cluster4.describe())
+
+# Analyse des résultats
+# Ajout des étiquettes de clusters aux données initiales normalisées
+dfs_clustered = pd.DataFrame(dfs, index=df.index, columns=df.columns)
+dfs_clustered["cluster"] = model_labels
+
+# Fonction de tracé de coordonnées parallèles pour les clusters
+# S'assurer d'importer la fonction "functions.py" pour les fonctions `display_parallel_coordinates` et `display_parallel_coordinates_centroids`
+# Affichage des tracés de coordonnées parallèles pour chaque cluster
+display_parallel_coordinates(dfs_clustered, 4)
+
+# Création d'un DataFrame contenant les centroïdes des clusters
+centroids = pd.DataFrame(model.cluster_centers_, columns=df.columns)
+centroids['cluster'] = centroids.index
+
+# Affichage des coordonnées parallèles pour les centroïdes
+display_parallel_coordinates_centroids(centroids, 4)
+
+
+# Exemple de prévision de clusters pour de nouveaux individus
+# Utilisation de numpy pour définir les nouveaux individus
+New = np.array([[34, 10, 0, 0, 20, 30, 0.5, 45],
+                [18, 7, 594, 0, 30, 22, 0.7, 25]])
+New_df = pd.DataFrame(New, columns=explanatory_columns)
+
+# Transformation des nouvelles données avec le scaler
+New_dfs = scaler.transform(New_df)
+New_labels = model.predict(New_dfs)
+print("Prédiction pour les nouveaux individus:", New_labels)
+
+
+
+##################################################################
+# Hierarchical Clustering with Agglomerative Hierarchical Clustering (AHC)
+##################################################################
+from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn import preprocessing
+from sklearn.decomposition import PCA
+from sklearn.cluster import AgglomerativeClustering
+import scipy.cluster.hierarchy as sch
+
+# Générer la matrice de liaison avec la méthode Ward
+Z = linkage(dfs, method='ward')
+
+# Visualiser le dendrogramme pour déterminer le nombre optimal de clusters
+plt.figure(figsize=(10, 7))
+plt.title("Dendrogramme de clustering hiérarchique (AHC)")
+dendrogram(Z, orientation='top', color_threshold=30)
+plt.axhline(y=30, color='r', linestyle='--')
+plt.show()
+
+# Graphique pour l'inertie (changement de distance)
+last = Z[-10:, 2]
+last_rev = last[::-1]
+idxs = np.arange(2, len(last) + 2)
+plt.figure(figsize=(6, 4))
+plt.step(idxs, last_rev, c="black")
+plt.xlabel("Nombre de clusters")
+plt.ylabel("Inertie (distance)")
+plt.title("Évolution de l'inertie avec le nombre de clusters")
+# Visualisation d'un scénario avec 4 clusters
+num_clusters = 4
+plt.scatter(idxs[np.where(idxs == num_clusters)], last_rev[np.where(idxs == num_clusters)], c="red")
+plt.axvline(x=num_clusters, color='red', linestyle='--')
+plt.show()
+
+# Création de 4 clusters en coupant le dendrogramme à hauteur t = 30
+clusters_ahc = fcluster(Z, t=30, criterion='distance')
+
+# Ré-encoder les étiquettes de clusters pour qu'elles commencent à 0
+label_encoder = preprocessing.LabelEncoder()
+clusters_encoded = label_encoder.fit_transform(clusters_ahc)
+
+# Réalisation de la décomposition PCA pour la visualisation
+pca = PCA(n_components=2)
+dfs_pca = pca.fit_transform(dfs)
+
+# Visualisation des clusters après PCA
+plt.figure(figsize=(8, 6))
+plt.scatter(dfs_pca[:, 0], dfs_pca[:, 1], c=clusters_encoded, cmap='rainbow', s=50)
+plt.title("Clusters AHC visualisés après PCA")
+plt.xlabel(f"Composante principale 1 ({100*pca.explained_variance_ratio_[0]:.2f}% de variance expliquée)")
+plt.ylabel(f"Composante principale 2 ({100*pca.explained_variance_ratio_[1]:.2f}% de variance expliquée)")
+plt.colorbar(label='Cluster')
+plt.show()
+
+
+############ Off-the-shelf tools for fine-tuning the number of clusters
+
+# Create dendrogram using ward method
+dendrogram = sch.dendrogram(sch.linkage(dfs, method='ward'))
+plt.show()
+
+# Create and fit the Agglomerative Clustering model
+hc = AgglomerativeClustering(affinity='euclidean', linkage='ward')
+hc.fit(dfs)
+
+# Print the number of clusters identified by the model
+print(f"Number of clusters identified by AHC: {hc.n_clusters_}")
+
+
+######################################################
+# Dimensionality Reduction with PCA
+######################################################
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+import pandas as pd
+from sklearn.decomposition import PCA
+from scipy.stats import pearsonr
+
+#Créer une heatmap des corrélations pour juger des liens de corrélation entre features
+
+# Fonction pour calculer la p-valeur de chaque paire de colonnes
+def calculate_pvalues(df):
+    pvalues = pd.DataFrame(np.ones((df.shape[1], df.shape[1])), columns=df.columns, index=df.columns)
+    for col1 in df.columns:
+        for col2 in df.columns:
+            if col1 != col2:
+                _, pvalue = pearsonr(df[col1], df[col2])
+                pvalues.loc[col1, col2] = pvalue
+    return pvalues
+
+# Calcul des corrélations de Pearson et leurs p-valeurs
+corr = df.corr()
+pvalues = calculate_pvalues(df)
+
+
+# Fonction pour créer les annotations avec les niveaux de significativité
+def correlation_significance_string(corr_value, pvalue):
+    if pvalue < 0.001:
+        significance = "***"  # Hautement significatif
+    elif pvalue < 0.01:
+        significance = "**"   # Très significatif
+    elif pvalue < 0.05:
+        significance = "*"    # significatif
+    else:
+        significance = ""     # Pas significatif
+    return f"{corr_value:.2f}{significance}"
+
+# Créer un DataFrame avec les annotations combinant les valeurs de corrélation et les étoiles
+annot = corr.copy()
+for i in annot.columns:
+    for j in annot.index:
+        annot.loc[j, i] = correlation_significance_string(corr.loc[j, i], pvalues.loc[j, i])
+
+# Configuration de la figure
+plt.figure(figsize=(10, 8))
+
+# Création de la heatmap avec les annotations de corrélation et de significativité
+sns.heatmap(corr, annot=annot, fmt='', cmap='coolwarm', vmin=-1, vmax=1, center=0, 
+            cbar_kws={"shrink": .75}, annot_kws={"size": 12})
+
+# Ajout du titre
+plt.title('Heatmap des corrélations de Pearson avec niveaux de significativité', fontsize=16)
+
+# Affichage
+plt.show()
+
+
+# Créer le modèle PCA avec l'ensemble des composantes
+pca = PCA()
+principalComponents = pca.fit_transform(dfs)
+
+# Calcul de la variance cumulée
+cumulative_variance = np.cumsum(pca.explained_variance_ratio_) * 100
+
+# Affichage de la variance cumulée expliquée par les composantes principales
+print("Variance ratio of the principal components:",pca.explained_variance_ratio_)
+print("Cumulative Variance ratio Explained:",pca.explained_variance_ratio_.cumsum())
+
+display_scree_plot(pca) #nécessite l'import de la fonction "functions"
+
+#Scores des composantes principales
+pc0 = pca.components_[0]
+pc1 = pca.components_[1]
+pc2 = pca.components_[2]
+pc3 = pca.components_[3]
+pc4 = pca.components_[4]
+pc5 = pca.components_[5]
+pc6 = pca.components_[6]
+pc7 = pca.components_[7]
+
+# Générer un cercle de corrélation
+#PC1 vs. P2
+pcs = pca.components_ 
+display_circles(pcs, num_components, pca, [(0,1)], labels = list(df.columns),) 
+#PC2 vs. PC3
+display_circles(pcs, num_components, pca, [(0,2)], labels = list(df.columns),) 
+
+# Transformer les données standardisées d'origine dans le nouvel espace vectoriel et afficher le nuage de points
+data_projected = pca.transform(dfs)
+display_factorial_planes(data_projected, num_components, pca, [(0,1)],  alpha = 0.5)
+
+
+###########Alternative avec sns
+# Instantiate a full PCA (with all components ; here 8)
+pca = PCA()
+
+# Fit and transform the standardized data
+principalComponents = pca.fit_transform(dfs)
+
+# Print the ratio of variance explained by the principal components
+print("Variance ratio of the principal components:",pca.explained_variance_ratio_)
+print("Cumulative Variance ratio Explained:",pca.explained_variance_ratio_.cumsum())
+
+# Visualizing the Principal Components with a scree plot
+principal_components_names = ['PC1', 'PC2', 'PC3', 'PC4', 'PC5', 'PC6', 'PC7', 'PC8']
+pca_df = pd.DataFrame({'Variance Explained': pca.explained_variance_ratio_,'Principal Component': principal_components_names})
+
+# Barplot of variance explained by each principal component
+sns.barplot(x='Principal Component', y='Variance Explained', data=pca_df, color="r")
+plt.show()
+
+#########################################
+########DBSCAN
+#########################################
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from sklearn.cluster import DBSCAN
+from sklearn.decomposition import PCA
+from sklearn.metrics import silhouette_score
+from sklearn.neighbors import NearestNeighbors
+from sklearn.model_selection import ParameterGrid
+
+# 1. Réduction de la dimensionnalité à 2D pour la visualisation avec PCA
+pca = PCA(n_components=2)
+X_pca = pca.fit_transform(dfs)
+
+# 2. Appliquer DBSCAN avec des valeurs initiales pour eps et min_samples
+eps = 1.5
+min_samples = 4
+dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+labels = dbscan.fit_predict(dfs)
+
+# 3. Calculer l'indice de silhouette si plusieurs clusters sont détectés
+if len(set(labels)) > 1:
+    silhouette_avg = silhouette_score(dfs, labels)
+    print(f'Silhouette Score: {silhouette_avg}')
+else:
+    print("Pas assez de clusters pour calculer l'indice de silhouette")
+
+# 4. Visualisation des clusters après PCA
+plt.figure(figsize=(10, 7))
+plt.scatter(X_pca[:, 0], X_pca[:, 1], c=labels, cmap='plasma', s=50)
+plt.title('DBSCAN Clustering (Visualisation 2D avec PCA)')
+plt.xlabel('Composante PCA 1')
+plt.ylabel('Composante PCA 2')
+plt.colorbar(label='Cluster')
+plt.show()
+
+# 5. Afficher les résultats : nombre de clusters et points de bruit
+unique_labels = set(labels)
+n_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
+n_noise = list(labels).count(-1)
+print(f'Nombre de clusters: {n_clusters}')
+print(f'Nombre de points considérés comme bruit: {n_noise}')
+
+# 6. Tracer le graphe des k-distances pour ajuster eps
+min_samples = 20
+neighbors = NearestNeighbors(n_neighbors=min_samples)
+neighbors_fit = neighbors.fit(dfs)
+distances, indices = neighbors_fit.kneighbors(dfs)
+distances = np.sort(distances[:, min_samples-1], axis=0)
+
+plt.figure(figsize=(8, 5))
+plt.plot(distances)
+plt.title(f'Graphe des k-distances (k = {min_samples})')
+plt.xlabel('Points (triés par distance)')
+plt.ylabel(f'Distance au {min_samples}-ème voisin')
+plt.grid(True)
+plt.show()
+
+# 7. Recherche des meilleurs paramètres avec une grille
+param_grid = {
+    'eps': np.arange(1, 2, 0.1),
+    'min_samples': np.arange(20, 50, 1)
+}
+
+best_params = None
+best_score = -1
+
+# Boucle sur les combinaisons de la grille
+for params in ParameterGrid(param_grid):
+    dbscan = DBSCAN(eps=params['eps'], min_samples=params['min_samples'])
+    labels = dbscan.fit_predict(dfs)
+    
+    # Calculer l'indice de silhouette s'il y a plus d'un cluster
+    if len(set(labels)) > 1:
+        try:
+            score = silhouette_score(dfs, labels)
+            if score > best_score:
+                best_score = score
+                best_params = params
+        except ValueError:
+            # Cas où DBSCAN crée trop peu de clusters ou beaucoup de bruit
+            pass
+
+# 8. Afficher les meilleurs paramètres trouvés
+if best_params:
+    print(f'Paramètres optimaux: {best_params}')
+    print(f'Meilleur score de silhouette: {best_score}')
+else:
+    print("Aucun clustering valide n'a été trouvé dans la grille.")
+
+# 9. Instanciation du modèle DBSCAN avec les meilleurs paramètres
+if best_params:
+    dbscan_optimal = DBSCAN(eps=best_params['eps'], min_samples=best_params['min_samples'])
+    labels_optimal = dbscan_optimal.fit_predict(dfs)
+
+    # Calculer l'indice de silhouette pour le modèle optimal
+    if len(set(labels_optimal)) > 1:
+        silhouette_avg_optimal = silhouette_score(dfs, labels_optimal)
+        print(f'Silhouette Score (meilleurs paramètres): {silhouette_avg_optimal}')
+    else:
+        print("Pas assez de clusters pour calculer l'indice de silhouette (meilleurs paramètres)")
+
+    # Visualisation des clusters optimaux après PCA
+    plt.figure(figsize=(10, 7))
+    plt.scatter(X_pca[:, 0], X_pca[:, 1], c=labels_optimal, cmap='plasma', s=50)
+    plt.title(f'Clustering DBSCAN optimal (eps={best_params["eps"]}, min_samples={best_params["min_samples"]})')
+    plt.xlabel('Composante PCA 1')
+    plt.ylabel('Composante PCA 2')
+    plt.colorbar(label='Cluster')
+    plt.show()
+
+    # Afficher le nombre de clusters et de points de bruit pour les meilleurs paramètres
+    unique_labels_optimal = set(labels_optimal)
+    n_clusters_optimal = len(unique_labels_optimal) - (1 if -1 in unique_labels_optimal else 0)
+    n_noise_optimal = list(labels_optimal).count(-1)
+    print(f'Nombre de clusters (meilleurs paramètres): {n_clusters_optimal}')
+    print(f'Nombre de points de bruit (meilleurs paramètres): {n_noise_optimal}')
