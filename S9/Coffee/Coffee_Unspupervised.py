@@ -10,17 +10,30 @@ from sklearn.decomposition import PCA as SklearnPCA
 from yellowbrick.features import PCA as YellowbrickPCA
 from functions import *
 from scipy.stats import pearsonr
+import os
 
 # Importation des données
-Data = pd.read_csv("diabetes.csv", sep=',')
+data_path = "synthetic_coffee_health_10000.csv"
+if not os.path.isfile(data_path):
+    raise FileNotFoundError(f"Le fichier '{data_path}' n'existe pas dans le dossier du script.")
+Data = pd.read_csv(data_path, sep=';')
 
-# Sélection des colonnes explicatives et de la cible
-target_name = "Outcome"
-explanatory_columns = ["Pregnancies", "Glucose", "BloodPressure", "SkinThickness",
-                       "Insulin", "BMI", "DiabetesPedigreeFunction", "Age"]
+# Afficher les noms de colonnes pour debug
 
-target = Data[target_name]
-df = Data[explanatory_columns]
+# Afficher les noms de colonnes pour debug
+print("Colonnes du fichier CSV :", list(Data.columns))
+
+# Sélection des colonnes numériques pour le clustering
+numeric_columns = [
+    "Age", "Coffee_Intake", "Caffeine_mg", "Sleep_Hours", "BMI",
+    "Heart_Rate", "Stress_Level", "Physical_Activity_Hours", "Smoking", "Alcohol_Consumption"
+]
+df = Data[numeric_columns].dropna()
+
+# Convertir Stress_Level en numérique
+stress_map = {"Low": 0, "Medium": 1, "High": 2}
+df["Stress_Level"] = df["Stress_Level"].map(stress_map)
+
 
 # Standardisation des données
 scaler = StandardScaler()
@@ -135,9 +148,9 @@ display_parallel_coordinates_centroids(centroids, 4)
 
 # Exemple de prévision de clusters pour de nouveaux individus
 # Utilisation de numpy pour définir les nouveaux individus
-New = np.array([[34, 10, 0, 0, 20, 30, 0.5, 45],
-                [18, 7, 594, 0, 30, 22, 0.7, 25]])
-New_df = pd.DataFrame(New, columns=explanatory_columns)
+New = np.array([[34, 10, 0, 0, 20, 30, 0.5, 45, 0, 1],
+                [18, 7, 594, 0, 30, 22, 0.7, 25, 1, 0]])
+New_df = pd.DataFrame(New, columns=numeric_columns)
 
 # Transformation des nouvelles données avec le scaler
 New_dfs = scaler.transform(New_df)
@@ -300,6 +313,9 @@ pc5 = pca.components_[5]
 pc6 = pca.components_[6]
 pc7 = pca.components_[7]
 
+# Ajout de la définition de num_components
+num_components = pca.n_components_
+
 # Générer un cercle de corrélation
 #PC1 vs. P2
 pcs = pca.components_ 
@@ -450,3 +466,39 @@ if best_params:
     n_noise_optimal = list(labels_optimal).count(-1)
     print(f'Nombre de clusters (meilleurs paramètres): {n_clusters_optimal}')
     print(f'Nombre de points de bruit (meilleurs paramètres): {n_noise_optimal}')
+
+
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+
+# Charger la base coffee
+df = pd.read_csv("synthetic_coffee_health_10000.csv", sep=';')
+
+# Sélectionner des colonnes numériques pertinentes
+cols = [
+    "Age", "Coffee_Intake", "Caffeine_mg", "Sleep_Hours", "BMI",
+    "Heart_Rate", "Stress_Level", "Physical_Activity_Hours"
+]
+X = df[cols].dropna()
+
+# Normaliser
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# Clustering
+kmeans = KMeans(n_clusters=3, random_state=42)
+labels = kmeans.fit_predict(X_scaled)
+
+# Réduction de dimension pour visualisation
+pca = PCA(n_components=2)
+X_pca = pca.fit_transform(X_scaled)
+
+plt.figure(figsize=(8,6))
+plt.scatter(X_pca[:,0], X_pca[:,1], c=labels, cmap='viridis', s=10)
+plt.title("Clusters sur la base Coffee")
+plt.xlabel("PCA 1")
+plt.ylabel("PCA 2")
+plt.show()
