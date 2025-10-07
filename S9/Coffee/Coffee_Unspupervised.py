@@ -340,7 +340,7 @@ print("Variance ratio of the principal components:",pca.explained_variance_ratio
 print("Cumulative Variance ratio Explained:",pca.explained_variance_ratio_.cumsum())
 
 # Visualizing the Principal Components with a scree plot
-principal_components_names = ['PC1', 'PC2', 'PC3', 'PC4', 'PC5', 'PC6', 'PC7', 'PC8']
+principal_components_names = [f'PC{i+1}' for i in range(len(pca.explained_variance_ratio_))]
 pca_df = pd.DataFrame({'Variance Explained': pca.explained_variance_ratio_,'Principal Component': principal_components_names})
 
 # Barplot of variance explained by each principal component
